@@ -16,12 +16,16 @@
     "developer-tools",
     "codebook"
   ],
-  "author": "",
+  "author": "Shrey Tandel",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/shrey-tandel/codebook-strategy.git"
   },
+  "bugs": {
+    "url": "https://github.com/shrey-tandel/codebook-strategy/issues"
+  },
+  "homepage": "https://github.com/shrey-tandel/codebook-strategy#readme",
   "engines": {
     "node": ">=16.0.0"
   },
