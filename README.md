@@ -1,6 +1,6 @@
 # codebook-strategy
 
-**Scaffold a structured context system for LLM-assisted development.** Give your AI the *right* context, not *all* the context.
+**Your AI coding assistant re-reads your whole codebase every session.** `codebook-strategy` builds a small set of notes it reads instead — so it gets the *right* context, not *all* the context.
 
 ```bash
 npx codebook-strategy init

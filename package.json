@@ -1,7 +1,7 @@
 {
   "name": "codebook-strategy",
   "version": "1.0.1",
-  "description": "Scaffold a structured context system for LLM-assisted development. Minimize token usage by giving your AI the right context, not all the context.",
+  "description": "Your AI coding assistant re-reads your whole codebase every session. codebook-strategy builds a small set of notes it reads instead.",
   "bin": {
     "codebook-strategy": "bin/cli.js"
   },
