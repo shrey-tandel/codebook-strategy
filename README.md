@@ -2,6 +2,9 @@
 
 **Your AI coding assistant re-reads your whole codebase every session.** `codebook-strategy` builds a small set of notes it reads instead — so it gets the *right* context, not *all* the context.
 
+> ⚠️ **Run it, don't install it.** This is a one-shot scaffolding CLI, **not** a dependency.
+> Use `npx` (or `pnpm dlx`) — do **not** run `npm install codebook-strategy`.
+
 ```bash
 npx codebook-strategy init
 ```
