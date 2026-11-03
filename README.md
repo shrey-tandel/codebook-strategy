@@ -62,17 +62,19 @@ It starts as structure and becomes knowledge. `init` lays down empty templates. 
 ### `init`
 
 ```bash
-npx codebook-strategy init [--force]
+npx codebook-strategy init [--tool <list>] [--force]
 ```
 
 - Confirms you're in a project (looks for `package.json`, `.git`, or `src/`).
-- Detects your LLM tooling and injects the strategy into the right config file:
-  - `CLAUDE.md` / `.claude/` → **Claude Code**
-  - `.cursorrules` / `.cursor/` → **Cursor**
-  - `AGENTS.md` → **Amp / Warp**
-  - none detected → creates all three
+- **Injects the strategy into every supported agent by default** — `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor), and `AGENTS.md` (Amp / Warp / Codex). That way it doesn't matter which agent — or how many — your team uses; whichever one someone opens, it finds the strategy. The agents it detects in use are marked in the output.
+- Narrow it with `--tool` if you only want specific agents:
+  ```bash
+  npx codebook-strategy init --tool claude
+  npx codebook-strategy init --tool claude,cursor
+  npx codebook-strategy init --tool all        # explicit default
+  ```
 - Scaffolds `book/` with `PREFACE.md`, `INDEX.md`, `CONNECTIONS.md`, and `chapters/`.
-- Existing config files are **appended to**, never overwritten. Existing book files are left untouched unless you pass `--force`.
+- Existing config files are **appended to**, never overwritten (and never double-injected). Existing book files are left untouched unless you pass `--force`.
 
 ### `status`
 

@@ -3,7 +3,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const { isProject, detectTargets } = require('../utils/detect-environment');
+const {
+  isProject,
+  detectPresent,
+  resolveTargets,
+  ALL_KEYS,
+} = require('../utils/detect-environment');
 const {
   exists,
   ensureDir,
@@ -25,8 +30,19 @@ function read(templatePath) {
   return fs.readFileSync(path.join(TEMPLATES, templatePath), 'utf8');
 }
 
+// Read the value of a flag, supporting both `--flag value` and `--flag=value`.
+function getFlagValue(args, name) {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === name) return args[i + 1];
+    if (a.startsWith(name + '=')) return a.slice(name.length + 1);
+  }
+  return undefined;
+}
+
 function init(args) {
   const force = args.includes('--force');
+  const toolArg = getFlagValue(args, '--tool');
   const cwd = process.cwd();
 
   if (!isProject(cwd)) {
@@ -34,6 +50,19 @@ function init(args) {
       red('This does not look like a project directory.') +
         '\n' +
         dim('Expected a package.json, .git, or src/ here. Run init from your project root.') +
+        '\n'
+    );
+    return 1;
+  }
+
+  // Resolve which agents to write to. Default: every supported agent, so it
+  // never matters which one (or how many) the developer actually uses.
+  const { targets, invalid } = resolveTargets(toolArg);
+  if (invalid.length > 0) {
+    process.stderr.write(
+      red(`Unknown --tool value(s): ${invalid.join(', ')}`) +
+        '\n' +
+        dim(`Valid tools: ${ALL_KEYS.join(', ')}, or all.`) +
         '\n'
     );
     return 1;
@@ -77,14 +106,21 @@ function init(args) {
   bookResults.push({ name: 'book/chapters/', result: keepResult });
 
   // --- Inject strategy into config files --------------------------------
-  const { detected, targets } = detectTargets(cwd);
+  // Which agents actually show signs of use here (for reporting only).
+  const present = detectPresent(cwd);
 
   const configResults = [];
   for (const target of targets) {
     const section = read(target.template);
     const filePath = path.join(cwd, target.file);
     const result = appendSection(filePath, section, STRATEGY_MARKER);
-    configResults.push({ tool: target.tool, file: target.file, result });
+    configResults.push({
+      key: target.key,
+      tool: target.tool,
+      file: target.file,
+      result,
+      detected: present.includes(target.key),
+    });
   }
 
   // --- Report -----------------------------------------------------------
@@ -96,18 +132,19 @@ function init(args) {
   }
 
   process.stdout.write('\n' + bold('Config files') + '\n');
-  if (detected) {
+  if (toolArg) {
     process.stdout.write(
-      dim('  Detected existing LLM tooling; injected into:') + '\n'
+      dim('  Injecting strategy into the tool(s) you selected:') + '\n'
     );
   } else {
     process.stdout.write(
-      dim('  No LLM tooling detected; created all three config files:') + '\n'
+      dim('  Covering every supported agent (pass --tool to narrow):') + '\n'
     );
   }
-  for (const { tool, file, result } of configResults) {
+  for (const { tool, file, result, detected } of configResults) {
+    const mark = detected ? cyan('  ← in use here') : '';
     process.stdout.write(
-      '  ' + formatResult(result) + ' ' + file + dim(` (${tool})`) + '\n'
+      '  ' + formatResult(result) + ' ' + file + dim(` (${tool})`) + mark + '\n'
     );
   }
 

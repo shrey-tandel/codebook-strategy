@@ -1,6 +1,6 @@
 {
   "name": "codebook-strategy",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Your AI coding assistant re-reads your whole codebase every session. codebook-strategy builds a small set of notes it reads instead.",
   "bin": {
     "codebook-strategy": "bin/cli.js"

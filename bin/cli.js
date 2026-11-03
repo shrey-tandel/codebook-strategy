@@ -18,7 +18,9 @@ ${bold('Commands')}
   validate    Check the book for index/chapter/connection mismatches
 
 ${bold('Options for init')}
-  --force     Overwrite an existing book/ directory
+  --tool <list>   Which agents to set up: claude, cursor, agents, or all.
+                  Comma-separated. Default: all (covers every agent).
+  --force         Overwrite an existing book/ directory
 
 ${bold('After init')}
   Tell your LLM: ${dim('"Implement the book strategy"')}
