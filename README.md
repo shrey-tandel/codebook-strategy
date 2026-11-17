@@ -100,12 +100,10 @@ Prints a warning for each mismatch and exits non-zero if any are found, so it fi
 ### `audit`
 
 ```bash
-npx codebook-strategy audit [--ci]
+npx codebook-strategy audit
 ```
 
 Scans your code and compares it to `CONNECTIONS.md`, then prints two lists: connections **missing** from the book (add them) and connections that look **stale** (remove them). It never edits the book — you decide what to change.
-
-Add `--ci` to make it fail (non-zero exit) when connections are missing, so it can gate CI. Custom detection rules can go in an optional `book/audit.config.json`.
 
 ## Works with
 
