@@ -103,47 +103,9 @@ Prints a warning for each mismatch and exits non-zero if any are found, so it fi
 npx codebook-strategy audit [--ci]
 ```
 
-A **manual, whole-repo completeness check** for `CONNECTIONS.md`. Where `validate` only checks internal consistency, `audit` scans the actual code and surfaces real dependencies the book is missing — then hands you an instruction block to reconcile them with your LLM. It never edits the book itself.
+Scans your code and compares it to `CONNECTIONS.md`, then prints two lists: connections **missing** from the book (add them) and connections that look **stale** (remove them). It never edits the book — you decide what to change.
 
-**Why it exists:** `CONNECTIONS.md` normally only grows when an agent happens to read a connection mid-task. That misses *reverse dependencies* — e.g. a reporting module that `SELECT`s from a table the ingestion module `INSERT`s into. The two share data but don't import each other, so nothing surfaces the coupling. `audit` is the deliberate check you run on demand, especially **before a schema change**.
-
-What it does:
-
-1. Parses `book/CONNECTIONS.md` into the set of known edges.
-2. Deterministically scans the repo (Node built-ins only, no new deps), skipping `node_modules`, `.git`, `build/`, `dist/`, etc. It derives edges from:
-   - **cross-module imports**, and
-   - **shared resources** via configurable regex — by default DB **table** reads/writes and **queue/topic** publish/subscribe.
-3. Builds **write→read directed edges** as first-class output: the module that *reads* a resource another module *writes* is a real dependency even with no import between them. This reverse/shared-data case is the whole point.
-4. Diffs code edges against the book and reports **(a)** edges in code but missing from the book, and **(b)** book edges with no code evidence (possibly stale).
-5. Prints a grouped report plus a copy-paste **agent instruction block** to confirm each finding and update `CONNECTIONS.md` + the affected chapter.
-
-**Exit code:** report-only by default (exit `0`). Pass `--ci` (or `--strict`) to exit non-zero when code has edges missing from the book, so it can gate CI. Stale book edges are always warnings only.
-
-**Scope — read this:** *shared-resource* detection is language-agnostic (it's just regex over text). *Import-edge* resolution is **JS/TS-only, with partial support for Python relative imports** (`from .mod import x`); imports in other languages are not resolved into edges. Don't rely on import edges outside JS/TS.
-
-**Configuration** — optional `book/audit.config.json` (or `.codebook-audit.json` at the repo root):
-
-```json
-{
-  "moduleDepth": 2,
-  "ignore": ["generated"],
-  "extensions": [".js", ".ts", ".go"],
-  "enable": ["route", "env"],
-  "disable": ["queue"],
-  "resources": [
-    {
-      "kind": "table",
-      "write": "\\b(?:INSERT INTO|UPDATE)\\s+([A-Za-z_][A-Za-z0-9_]*)",
-      "read": "\\bFROM\\s+([A-Za-z_][A-Za-z0-9_]*)",
-      "flags": "gi"
-    }
-  ]
-}
-```
-
-- `table` and `queue` rules are **on by default**. `route` and `env` are **opt-in** via `enable` — they're undirected `ref`-only rules and get noisy fast (one shared `NODE_ENV` across N files produces N·(N−1)/2 edges), so they never gate CI and aren't a sensible default.
-- `disable` turns off a default kind; `resources` adds custom rules (a rule reusing an existing `kind` replaces it). Each rule's first capture group is the resource id; `write`/`read` are directional, `ref` is undirected.
-- `moduleDepth` (default `2`) sets how many path segments form a "module" (`src/reporting/queries.ts` → `src/reporting`). Files shallower than the cap keep their basename so a flat `src/*.js` layout doesn't collapse into one module.
+Add `--ci` to make it fail (non-zero exit) when connections are missing, so it can gate CI. Custom detection rules can go in an optional `book/audit.config.json`.
 
 ## Works with
 
