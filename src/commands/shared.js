@@ -84,8 +84,47 @@ function parseConnectionTopics(content) {
   return topics;
 }
 
+// Extract connection EDGES from CONNECTIONS.md (chapter-level), for the audit
+// command. Like parseConnectionTopics, but keeps each pair as an edge with its
+// direction and reason. A chain `a → b → c` yields edges a-b and b-c.
+//
+// Returns [{ a, b, aRaw, bRaw, directed, reason, line }].
+function parseConnectionEdges(content) {
+  const edges = [];
+  const withoutComments = content.replace(/<!--[\s\S]*?-->/g, '');
+  withoutComments.split('\n').forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('>') || trimmed.startsWith('#')) return;
+    const op = trimmed.match(/(↔|<->|→|->)/);
+    if (!op) return;
+    const directed = op[1] === '→' || op[1] === '->';
+    const beforeReason = trimmed.split(':')[0];
+    const sides = beforeReason
+      .split(/↔|<->|→|->/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (sides.length < 2) return;
+    const reason = trimmed.includes(':')
+      ? trimmed.slice(trimmed.indexOf(':') + 1).trim()
+      : '';
+    for (let k = 0; k < sides.length - 1; k++) {
+      edges.push({
+        a: sides[k].split('/')[0].trim(),
+        b: sides[k + 1].split('/')[0].trim(),
+        aRaw: sides[k],
+        bRaw: sides[k + 1],
+        directed,
+        reason,
+        line: i + 1,
+      });
+    }
+  });
+  return edges;
+}
+
 module.exports = {
   listChapters,
   parseIndexChapters,
   parseConnectionTopics,
+  parseConnectionEdges,
 };

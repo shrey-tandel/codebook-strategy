@@ -4,6 +4,7 @@
 const init = require('../src/commands/init');
 const status = require('../src/commands/status');
 const validate = require('../src/commands/validate');
+const audit = require('../src/commands/audit');
 const { red, bold, dim } = require('../src/utils/colors');
 
 const HELP = `
@@ -16,11 +17,17 @@ ${bold('Commands')}
   init        Scaffold the /book/ directory and inject strategy instructions
   status      Show which book files exist and their state
   validate    Check the book for index/chapter/connection mismatches
+  audit       Scan the repo for connections missing from CONNECTIONS.md
 
 ${bold('Options for init')}
   --tool <list>   Which agents to set up: claude, cursor, agents, or all.
                   Comma-separated. Default: all (covers every agent).
   --force         Overwrite an existing book/ directory
+
+${bold('Options for audit')}
+  --ci, --strict  Exit non-zero when code has edges missing from the book.
+                  Default is report-only (exit 0). Reads optional
+                  book/audit.config.json for custom resource rules.
 
 ${bold('After init')}
   Tell your LLM: ${dim('"Implement the book strategy"')}
@@ -38,6 +45,8 @@ function main(argv) {
       return status(rest);
     case 'validate':
       return validate(rest);
+    case 'audit':
+      return audit(rest);
     case '-h':
     case '--help':
     case 'help':
