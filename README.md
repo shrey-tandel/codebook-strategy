@@ -100,10 +100,16 @@ Prints a warning for each mismatch and exits non-zero if any are found, so it fi
 ### `audit`
 
 ```bash
-npx codebook-strategy audit
+npx codebook-strategy audit [--ci] [--check-mtime]
 ```
 
-Scans your code and compares it to `CONNECTIONS.md`, then prints two lists: connections **missing** from the book (add them) and connections that look **stale** (remove them). It never edits the book — you decide what to change.
+Scans your code and compares it to the book. It never edits anything — it prints three lists and you decide what to change:
+
+1. **Missing connections** — code dependencies absent from `CONNECTIONS.md`, including reverse edges (e.g. a module that *reads* a table another module *writes*).
+2. **Stale connections** — `CONNECTIONS.md` edges with no code evidence.
+3. **Stale chapters** — a chapter's `## Key Files` path no longer exists (hard finding), or — with `--check-mtime` — its source changed after the chapter did (warning).
+
+By default it's report-only (exit 0); `--ci` exits non-zero on missing connections or missing chapter files. Import resolution is **JS/TS only**, so dependencies in other languages may be missed. The stale-chapter check reads the `## Key Files` section that chapters now carry — chapters written before this format are skipped until regenerated.
 
 ## Works with
 

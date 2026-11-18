@@ -43,6 +43,19 @@ After resolving the user's question, and if they approved:
 - Update INDEX.md if a new chapter was added
 - Update CONNECTIONS.md if new relationships were discovered
 
+### Chapter Format
+
+Every chapter MUST include a `## Key Files` section: a bullet list of the
+repo-relative paths to that feature's main source files, each path wrapped in
+backticks. The `audit` command parses this section to detect stale chapters, so
+keep the format exact:
+
+    ## Key Files
+    - `src/ingestion/webhook.js`
+    - `src/ingestion/parser.js`
+
+List real source files only — one per bullet, no globs or directories.
+
 ### Bootstrap Command
 
 If the user says "Implement the book strategy" or "Bootstrap the book":

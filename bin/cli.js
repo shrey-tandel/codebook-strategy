@@ -17,7 +17,7 @@ ${bold('Commands')}
   init        Scaffold the /book/ directory and inject strategy instructions
   status      Show which book files exist and their state
   validate    Check the book for index/chapter/connection mismatches
-  audit       Scan the repo for connections missing from CONNECTIONS.md
+  audit       Scan for drift: missing/stale connections and stale chapters
 
 ${bold('Options for init')}
   --tool <list>   Which agents to set up: claude, cursor, agents, or all.
@@ -25,9 +25,12 @@ ${bold('Options for init')}
   --force         Overwrite an existing book/ directory
 
 ${bold('Options for audit')}
-  --ci, --strict  Exit non-zero when code has edges missing from the book.
+  --ci, --strict  Exit non-zero on missing connections or missing chapter files.
                   Default is report-only (exit 0). Reads optional
                   book/audit.config.json for custom resource rules.
+  --check-mtime   Also warn when a chapter's source file is newer than the
+                  chapter (git commit times; skipped if not a git repo).
+                  Warnings never fail --ci.
 
 ${bold('After init')}
   Tell your LLM: ${dim('"Implement the book strategy"')}

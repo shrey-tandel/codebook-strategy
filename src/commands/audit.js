@@ -2,10 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const { exists } = require('../utils/file-writer');
 const { green, yellow, red, cyan, dim, bold } = require('../utils/colors');
-const { parseConnectionEdges } = require('./shared');
+const { parseConnectionEdges, listChapters, parseChapterKeyFiles } = require('./shared');
 const { loadConfig, resolveConfig, scanRepo } = require('../utils/audit-scan');
 
 // Normalized word tokens for fuzzy node matching (module paths vs chapter names).
@@ -48,8 +49,75 @@ function groupBy(arr, fn) {
   return out;
 }
 
+// --- git helpers (deterministic; no fs mtime fallback) ---
+
+function isGitRepo(cwd) {
+  try {
+    const out = execFileSync('git', ['-C', cwd, 'rev-parse', '--is-inside-work-tree'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return out.trim() === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+// Unix seconds of the last commit that touched relPath, or null if the file is
+// untracked / has no commits. Never falls back to filesystem mtime (which resets
+// on clone and would report false staleness).
+function gitCommitTime(cwd, relPath) {
+  try {
+    const out = execFileSync('git', ['-C', cwd, 'log', '-1', '--format=%ct', '--', relPath], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const t = parseInt(out.trim(), 10);
+    return Number.isFinite(t) ? t : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// --- stale-chapter check (existence is hard; git-mtime is an opt-in warning) ---
+
+function auditChapters(cwd, bookDir, checkMtime) {
+  const chaptersDir = path.join(bookDir, 'chapters');
+  const missingFiles = []; // { chapter, file } — referenced path no longer exists (HARD)
+  const newerFiles = [];   // { chapter, file } — source committed after the chapter (WARNING)
+  const skipped = [];      // chapter files with no `## Key Files` section
+  const gitRepo = checkMtime ? isGitRepo(cwd) : false;
+
+  for (const file of listChapters(bookDir)) {
+    const chapterPath = path.join(chaptersDir, file);
+    const keyFiles = parseChapterKeyFiles(fs.readFileSync(chapterPath, 'utf8'));
+    if (keyFiles === null) {
+      skipped.push(file);
+      continue;
+    }
+    const chapterCommit =
+      checkMtime && gitRepo ? gitCommitTime(cwd, path.relative(cwd, chapterPath)) : null;
+    for (const rel of keyFiles) {
+      const abs = path.resolve(cwd, rel);
+      if (!exists(abs)) {
+        missingFiles.push({ chapter: file, file: rel });
+        continue;
+      }
+      if (checkMtime && gitRepo && chapterCommit != null) {
+        const srcCommit = gitCommitTime(cwd, rel);
+        if (srcCommit != null && srcCommit > chapterCommit) {
+          newerFiles.push({ chapter: file, file: rel });
+        }
+      }
+    }
+  }
+  return { missingFiles, newerFiles, skipped, gitRepo, checkMtime };
+}
+
 function audit(args) {
-  const strict = (args || []).some((a) => a === '--ci' || a === '--strict');
+  const argv = args || [];
+  const strict = argv.some((a) => a === '--ci' || a === '--strict');
+  const checkMtime = argv.some((a) => a === '--check-mtime');
   const cwd = process.cwd();
   const bookDir = path.join(cwd, 'book');
   const connPath = path.join(bookDir, 'CONNECTIONS.md');
@@ -78,23 +146,37 @@ function audit(args) {
 
   const missing = codeEdges.filter((ce) => !bookEdges.some((be) => edgeMatch(ce, be)));
   const stale = bookEdges.filter((be) => !codeEdges.some((ce) => edgeMatch(ce, be)));
+  const chap = auditChapters(cwd, bookDir, checkMtime);
+  const chapterCount = listChapters(bookDir).length;
 
-  // --- Report ---
+  // --- Header ---
   process.stdout.write('\n' + bold('Codebook audit') + '\n');
   process.stdout.write(
     dim(`  Scanned ${fileCount} files · ${codeEdges.length} code edges · ` +
-        `${bookEdges.length} book edges · ` +
+        `${bookEdges.length} book edges · ${chapterCount} chapters · ` +
         (loaded.path ? `config ${path.relative(cwd, loaded.path)}` : 'built-in rules') +
         ` · rules: ${conf.rules.map((r) => r.kind).join(', ')}`) + '\n'
   );
 
-  if (missing.length === 0 && stale.length === 0) {
-    process.stdout.write('\n  ' + green('✓') + ' Book connections match the code.\n\n');
+  const connClean = missing.length === 0 && stale.length === 0;
+  const chapClean = chap.missingFiles.length === 0 && chap.newerFiles.length === 0;
+
+  if (connClean && chapClean) {
+    process.stdout.write('\n  ' + green('✓') + ' Book matches the code.\n');
+    if (chap.skipped.length) {
+      process.stdout.write(
+        '  ' + dim(`(${chap.skipped.length} chapter(s) skipped — no parseable key-files section: ` +
+          `${chap.skipped.join(', ')})`) + '\n'
+      );
+    }
+    process.stdout.write('\n');
     return 0;
   }
 
+  // --- Section 1: missing connections ---
   if (missing.length > 0) {
-    process.stdout.write('\n' + bold('Edges in code but missing from the book') + '\n');
+    process.stdout.write('\n' + bold('1. Missing connections') +
+      dim(' — in the code but not in CONNECTIONS.md') + '\n');
     const byKind = groupBy(missing, (e) => e.kind);
     for (const kind of Object.keys(byKind).sort()) {
       process.stdout.write(dim(`  [${kind}]`) + '\n');
@@ -108,8 +190,10 @@ function audit(args) {
     }
   }
 
+  // --- Section 2: stale connections ---
   if (stale.length > 0) {
-    process.stdout.write('\n' + bold('Book edges with no code evidence (possibly stale)') + '\n');
+    process.stdout.write('\n' + bold('2. Stale connections') +
+      dim(' — in CONNECTIONS.md but with no code evidence') + '\n');
     for (const e of stale) {
       process.stdout.write(
         '    ' + yellow('?') + ` ${e.aRaw} ${arrow(e.directed)} ${e.bRaw}` +
@@ -119,29 +203,66 @@ function audit(args) {
     }
   }
 
-  // --- Agent-ready instruction block ---
+  // --- Section 3: stale chapters ---
+  if (chap.missingFiles.length > 0 || chap.newerFiles.length > 0 || chap.skipped.length > 0) {
+    process.stdout.write('\n' + bold('3. Stale chapters') +
+      dim(' — referenced source files that are gone or newer than the chapter') + '\n');
+    for (const f of chap.missingFiles) {
+      process.stdout.write(
+        '    ' + red('✗') + ` ${f.chapter}` + dim(' references ') + f.file +
+        ' ' + red('(file not found)') + '\n'
+      );
+    }
+    if (checkMtime) {
+      for (const f of chap.newerFiles) {
+        process.stdout.write(
+          '    ' + yellow('!') + ` ${f.chapter}: ` + f.file +
+          dim(' changed after the chapter (code newer than doc)') + '\n'
+        );
+      }
+    }
+    if (chap.skipped.length > 0) {
+      process.stdout.write(
+        '    ' + dim(`skipped (no parseable key-files section): ${chap.skipped.join(', ')}`) + '\n'
+      );
+    }
+    if (!checkMtime) {
+      process.stdout.write(
+        '    ' + dim('git-mtime warnings off — pass --check-mtime to flag code newer than its chapter.') + '\n'
+      );
+    } else if (!chap.gitRepo) {
+      process.stdout.write(
+        '    ' + dim('not a git repo — skipped the git-mtime staleness check (no fs-mtime fallback).') + '\n'
+      );
+    }
+  }
+
+  // --- Agent-ready instruction block (opt-in; the audit itself spends no tokens) ---
   process.stdout.write('\n' + bold('Hand this to your LLM to reconcile:') + '\n\n');
   process.stdout.write(dim('--- BEGIN AGENT INSTRUCTIONS ---') + '\n');
-  process.stdout.write(buildInstructionBlock(missing, stale));
+  process.stdout.write(buildInstructionBlock(missing, stale, chap));
   process.stdout.write(dim('--- END AGENT INSTRUCTIONS ---') + '\n');
 
-  if (missing.length > 0 && !strict) {
+  // Default is report-only. --ci/--strict fails on hard findings only:
+  // missing connections and missing chapter files. mtime warnings never fail.
+  const hardFail = missing.length > 0 || chap.missingFiles.length > 0;
+  if (hardFail && !strict) {
     process.stdout.write(
-      '\n' + dim('  Report-only (exit 0). Pass --ci (or --strict) to fail on missing edges.') + '\n'
+      '\n' + dim('  Report-only (exit 0). Pass --ci (or --strict) to fail on missing ' +
+        'connections or missing chapter files.') + '\n'
     );
   }
   process.stdout.write('\n');
 
-  // Default is report-only. Only --ci/--strict turns missing edges into a failure.
-  return strict && missing.length > 0 ? 1 : 0;
+  return strict && hardFail ? 1 : 0;
 }
 
-function buildInstructionBlock(missing, stale) {
+function buildInstructionBlock(missing, stale, chap) {
   const lines = [];
   lines.push(
-    'A deterministic scan compared book/CONNECTIONS.md against the code. For each',
-    'candidate below, confirm it against the actual source before changing anything.',
-    'The scan is heuristic — do not trust it blindly.',
+    'A deterministic scan compared book/CONNECTIONS.md and the chapters against the',
+    'code. For each candidate below, confirm it against the actual source before',
+    'changing anything. The scan is heuristic — do not trust it blindly.',
     ''
   );
   if (missing.length) {
@@ -170,6 +291,21 @@ function buildInstructionBlock(missing, stale) {
       '',
       'If the relationship genuinely no longer exists, remove the line and note it in the',
       'chapter. If it exists via a path the scan missed, leave it.',
+      ''
+    );
+  }
+  if (chap.missingFiles.length || chap.newerFiles.length) {
+    lines.push('STALE CHAPTERS (a chapter\'s `## Key Files` path is gone or out of date):');
+    for (const f of chap.missingFiles) {
+      lines.push(`- ${f.chapter}: references ${f.file} — FILE NOT FOUND (move/rename or drop it)`);
+    }
+    for (const f of chap.newerFiles) {
+      lines.push(`- ${f.chapter}: ${f.file} changed after the chapter — re-read and refresh the chapter`);
+    }
+    lines.push(
+      '',
+      'Open each chapter, reconcile its `## Key Files` list and prose with the current',
+      'source, then save it so its timestamp moves forward.',
       ''
     );
   }

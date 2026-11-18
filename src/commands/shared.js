@@ -122,9 +122,47 @@ function parseConnectionEdges(content) {
   return edges;
 }
 
+// Parse a chapter's `## Key Files` section into a list of repo-relative source
+// paths. Returns null when the chapter has no such heading (the caller skips it
+// with a note rather than reporting a finding). Otherwise returns the paths
+// wrapped in backticks under that heading — possibly an empty array. Only
+// content inside the `## Key Files` section is considered; fenced code blocks
+// are ignored so a pasted template example never parses as real entries.
+function parseChapterKeyFiles(content) {
+  const lines = String(content).split('\n');
+  let inFence = false;
+  let inSection = false;
+  let found = false;
+  const files = [];
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      if (/^key files$/i.test(heading[2].trim())) {
+        inSection = true;
+        found = true;
+      } else if (inSection) {
+        inSection = false;
+      }
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!/^[-*]\s+/.test(trimmed)) continue;
+    const m = trimmed.match(/`([^`]+)`/);
+    if (m) files.push(m[1].trim());
+  }
+  return found ? files : null;
+}
+
 module.exports = {
   listChapters,
   parseIndexChapters,
   parseConnectionTopics,
   parseConnectionEdges,
+  parseChapterKeyFiles,
 };
